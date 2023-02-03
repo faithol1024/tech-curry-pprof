@@ -55,3 +55,7 @@ Name,Email,Password
 ical3,fa@aaaa.com,$2a$15$8YIYRRzI3BN5XN60bXUXBetYSyw3NQkIKTAoAAHTLritDwQgdMJTy
 Name,Email,Password
 ical1,fa@aaaa.com,$2a$15$x4ZOM5/1xJ/1YDMoDkYa/uOR9ovFClvCcnRDRnZWXXn5b.wdkxvda
+Name,Email,Password
+bob,bob@bob.com,$2a$15$2W2CB8xjQxbSnY5A6lDMReQfpOVzja9IwG8QBtQqsNbUXLqrE/m1G
+Name,Email,Password
+bob1,bob@bob.com,$2a$15$uQipNOIgWN8QSqjNxeWzh.CP/1786KVOAIxZVE3sW/y1tFkejN7Ui
