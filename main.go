@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"regexp"
 	"sync"
@@ -23,7 +24,7 @@ const (
 	userFilepath = "users.csv"
 )
 
-// hint: need changes to activate pprof
+// hint: need changes to activate pprof -> Add import _ "net/http/pprof"
 func main() {
 	http.HandleFunc("/register", registerUser)
 	http.HandleFunc("/login", login)
@@ -32,6 +33,7 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
+// Seems cool.
 func helloWorld(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello World!"))
 }
@@ -39,6 +41,7 @@ func helloWorld(w http.ResponseWriter, r *http.Request) {
 func login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
 	var user User
@@ -56,6 +59,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// * Slow function here. -> fix by adding wg.Done and defer file.Close()
 	userData, err := getUserDataWithPassword(user.Username, user.Password)
 	if err != nil {
 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
@@ -68,6 +72,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 func registerUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
 	var user User
@@ -95,6 +100,7 @@ func registerUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// * Slow function due to high hash cost.
 	err = SaveUserData(user, userFilepath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -105,9 +111,12 @@ func registerUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // this seems sus
-func isValidEmail(email string) bool {
-	re := regexp.MustCompile(`^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$`)
 
+// Declare only once
+var re = regexp.MustCompile(`^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$`)
+
+func isValidEmail(email string) bool {
+	// Check empty email first, then call regex
 	if email == "" {
 		return false
 	}
@@ -115,12 +124,13 @@ func isValidEmail(email string) bool {
 	return re.MatchString(email)
 }
 
-// this function may need attention
+// this function may need attention -> hashPassword needs attention
 func SaveUserData(user User, filepath string) error {
 	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	w := csv.NewWriter(file)
 	defer w.Flush()
@@ -143,8 +153,9 @@ func SaveUserData(user User, filepath string) error {
 }
 
 // what can be done here that can improve performance but still serve the same purpose?
+// Reduce cost!
 func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 15)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(bytes), err
 }
 
@@ -153,11 +164,13 @@ func checkPassword(hashedPassword string, password string) error {
 }
 
 // there are 2 points that need change here
+// wg.Done and f.Close()
 func getUserDataWithPassword(username, password string) (User, error) {
 	f, err := os.Open(userFilepath)
 	if err != nil {
 		return User{}, err
 	}
+	defer f.Close()
 
 	reader := csv.NewReader(f)
 
@@ -172,7 +185,7 @@ func getUserDataWithPassword(username, password string) (User, error) {
 	for _, record := range records {
 		wg.Add(1)
 		go func(record []string) {
-
+			defer wg.Done()
 			if record[0] == username {
 				err = checkPassword(record[2], password)
 				if err == nil {
@@ -192,6 +205,11 @@ func getUserDataWithPassword(username, password string) (User, error) {
 
 // what can be done here that can improve performance but still serve the same purpose? be creative
 func isUserExists(username string) bool {
+	// Maybe can check username validity first
+	if username == "" {
+		return false
+	}
+
 	f, err := os.Open(userFilepath)
 	if err != nil {
 		return true
@@ -199,7 +217,6 @@ func isUserExists(username string) bool {
 	defer f.Close()
 
 	reader := csv.NewReader(f)
-
 	records, err := reader.ReadAll()
 	if err != nil {
 		return true
