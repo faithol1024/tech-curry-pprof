@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"sync"
+
+	_ "net/http/pprof"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -25,10 +28,20 @@ const (
 
 // hint: need changes to activate pprof
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	initUserFromCSV()
+	defer func() {
+		go saveUserDataToCSV(UserMemCache, userFilepath)
+	}()
+
 	http.HandleFunc("/register", registerUser)
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/", helloWorld)
 	fmt.Println("Server started at localhost:8080")
+
 	http.ListenAndServe(":8080", nil)
 }
 
@@ -95,7 +108,7 @@ func registerUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = SaveUserData(user, userFilepath)
+	err = SaveUserData(user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -106,7 +119,7 @@ func registerUser(w http.ResponseWriter, r *http.Request) {
 
 // this seems sus
 func isValidEmail(email string) bool {
-	re := regexp.MustCompile(`^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$`)
+	re := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
 
 	if email == "" {
 		return false
@@ -116,27 +129,10 @@ func isValidEmail(email string) bool {
 }
 
 // this function may need attention
-func SaveUserData(user User, filepath string) error {
-	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
-	if err != nil {
-		return err
-	}
-
-	w := csv.NewWriter(file)
-	defer w.Flush()
-
-	hashedPassword, err := hashPassword(user.Password)
-	if err != nil {
-		return err
-	}
-
-	header := []string{"Name", "Email", "Password"}
-	if err := w.Write(header); err != nil {
-		return err
-	}
-
-	if err := w.Write([]string{user.Username, user.Email, hashedPassword}); err != nil {
-		return err
+func SaveUserData(user User) error {
+	_, ok := UserMemCache[user.Username]
+	if !ok {
+		UserMemCache[user.Username] = user
 	}
 
 	return nil
@@ -158,6 +154,7 @@ func getUserDataWithPassword(username, password string) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
+	defer f.Close()
 
 	reader := csv.NewReader(f)
 
@@ -192,26 +189,8 @@ func getUserDataWithPassword(username, password string) (User, error) {
 
 // what can be done here that can improve performance but still serve the same purpose? be creative
 func isUserExists(username string) bool {
-	f, err := os.Open(userFilepath)
-	if err != nil {
-		return true
-	}
-	defer f.Close()
-
-	reader := csv.NewReader(f)
-
-	records, err := reader.ReadAll()
-	if err != nil {
-		return true
-	}
-
-	for _, record := range records {
-		if record[0] == username {
-			return true
-		}
-	}
-
-	return false
+	_, ok := UserMemCache[username]
+	return ok
 }
 
 func parseUserData(record []string) User {
