@@ -1,11 +1,14 @@
 package main
 
 import (
+	"crypto/md5"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"regexp"
 	"sync"
@@ -25,6 +28,9 @@ const (
 
 // hint: need changes to activate pprof
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	http.HandleFunc("/register", registerUser)
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/", helloWorld)
@@ -123,7 +129,11 @@ func SaveUserData(user User, filepath string) error {
 	}
 
 	w := csv.NewWriter(file)
-	defer w.Flush()
+
+	defer func() {
+		w.Flush()
+		file.Close()
+	}()
 
 	hashedPassword, err := hashPassword(user.Password)
 	if err != nil {
@@ -144,8 +154,12 @@ func SaveUserData(user User, filepath string) error {
 
 // what can be done here that can improve performance but still serve the same purpose?
 func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 15)
-	return string(bytes), err
+	jsonBytes, err := json.Marshal(password)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", md5.Sum(jsonBytes)), nil
 }
 
 func checkPassword(hashedPassword string, password string) error {
