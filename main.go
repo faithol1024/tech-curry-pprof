@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"regexp"
 	"sync"
@@ -25,6 +27,9 @@ const (
 
 // hint: need changes to activate pprof
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:8000", nil))
+	}()
 	http.HandleFunc("/register", registerUser)
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/", helloWorld)
@@ -180,6 +185,7 @@ func getUserDataWithPassword(username, password string) (User, error) {
 				}
 			}
 		}(record)
+		wg.Done()
 	}
 	if err != nil {
 		return User{}, err
